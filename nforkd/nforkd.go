@@ -4,6 +4,7 @@ package main
 
 import (
 	"github.com/datacratic/gonfork"
+	"github.com/datacratic/gorest/rest"
 
 	"encoding/json"
 	"flag"
@@ -49,6 +50,16 @@ func main() {
 	log.Printf("starting nfork routing on port: %d\n", *port)
 	log.Printf("starting nfork control on port: %d\n", *controlPort)
 
+	controlServer := &rest.Endpoint{
+		Server: &http.Server{
+			Addr:         fmt.Sprintf(":%d", *controlPort),
+			ReadTimeout:  ControlReadTimeout,
+			WriteTimeout: ControlWriteTimeout,
+		},
+	}
+	controlServer.AddRoutable(router)
+	controlServer.ListenAndServe()
+
 	routingServer := &http.Server{
 		Addr:         fmt.Sprintf(":%d", *port),
 		Handler:      router,
@@ -57,11 +68,4 @@ func main() {
 	}
 	go log.Fatal(routingServer.ListenAndServe())
 
-	controlServer := &http.Server{
-		Addr:         fmt.Sprintf(":%d", *controlPort),
-		Handler:      router,
-		ReadTimeout:  ControlReadTimeout,
-		WriteTimeout: ControlWriteTimeout,
-	}
-	log.Fatal(controlServer.ListenAndServe())
 }

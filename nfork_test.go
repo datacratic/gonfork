@@ -15,27 +15,6 @@ import (
 	"time"
 )
 
-func SendTo(server *httptest.Server, method, path, body string) (*http.Response, string, error) {
-	path = server.URL + "/" + path
-
-	req, err := http.NewRequest(method, path, bytes.NewReader([]byte(body)))
-	if err != nil {
-		return nil, "", err
-	}
-
-	req.Header.Set("content-type", "text/plain")
-	req.Header.Set("X-Test", "true")
-
-	resp, err := http.DefaultClient.Do(req)
-
-	var respBody []byte
-	if err == nil {
-		respBody, err = ioutil.ReadAll(resp.Body)
-	}
-
-	return resp, string(respBody), err
-}
-
 type TestService struct {
 	T    *testing.T
 	Name string
@@ -115,4 +94,57 @@ func (service *TestService) Expect(requests ...string) {
 	if diff := b.Difference(a); len(diff) > 0 {
 		service.T.Errorf("FAIL(service.%s): missing values -> %s", service.Name, diff)
 	}
+}
+
+func ExpectRoute(t *testing.T, server *httptest.Server, method, path, req string, expCode int, expResp string) {
+	resp, body, err := SendTo(server, method, path, req)
+	if err != nil {
+		t.Errorf("FAIL(send.%s): post failed -> %s", req, err.Error())
+		return
+	}
+
+	if resp.StatusCode != expCode {
+		t.Errorf("FAIL(send.%s): unexpected code -> %d != %d", req, resp.StatusCode, expCode)
+	}
+
+	if body != expResp {
+		t.Errorf("FAIL(send.%s): unexpected body -> %s != %s", req, body, expResp)
+	}
+
+	if val := resp.Header.Get("X-Test"); val != "true" {
+		t.Errorf("FAIL(send.%s): missing or invalid x-test header -> '%s' != 'true'", req, val)
+	}
+}
+
+func ExpectRouteTimeout(t *testing.T, server *httptest.Server, method, path, req string) {
+	resp, _, err := SendTo(server, method, path, req)
+	if err != nil {
+		t.Errorf("FAIL(send.%s): post failed -> %s", req, err.Error())
+		return
+	}
+
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Errorf("FAIL(send.%s): unexpected code -> %d != %d", req, resp.StatusCode, http.StatusServiceUnavailable)
+	}
+}
+
+func SendTo(server *httptest.Server, method, path, body string) (*http.Response, string, error) {
+	path = server.URL + "/" + path
+
+	req, err := http.NewRequest(method, path, bytes.NewReader([]byte(body)))
+	if err != nil {
+		return nil, "", err
+	}
+
+	req.Header.Set("content-type", "text/plain")
+	req.Header.Set("X-Test", "true")
+
+	resp, err := http.DefaultClient.Do(req)
+
+	var respBody []byte
+	if err == nil {
+		respBody, err = ioutil.ReadAll(resp.Body)
+	}
+
+	return resp, string(respBody), err
 }

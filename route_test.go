@@ -108,38 +108,6 @@ func (route *Route) TestActivate(t *testing.T, outbound string) {
 	}
 }
 
-func ExpectRoute(t *testing.T, server *httptest.Server, method, path, req string, expCode int, expResp string) {
-	resp, body, err := SendTo(server, method, path, req)
-	if err != nil {
-		t.Errorf("FAIL(send.%s): post failed -> %s", req, err.Error())
-		return
-	}
-
-	if resp.StatusCode != expCode {
-		t.Errorf("FAIL(send.%s): unexpected code -> %d != %d", req, resp.StatusCode, expCode)
-	}
-
-	if body != expResp {
-		t.Errorf("FAIL(send.%s): unexpected body -> %s != %s", req, body, expResp)
-	}
-
-	if val := resp.Header.Get("X-Test"); val != "true" {
-		t.Errorf("FAIL(send.%s): missing or invalid x-test header -> '%s' != 'true'", req, val)
-	}
-}
-
-func ExpectRouteTimeout(t *testing.T, server *httptest.Server, method, path, req string) {
-	resp, _, err := SendTo(server, method, path, req)
-	if err != nil {
-		t.Errorf("FAIL(send.%s): post failed -> %s", req, err.Error())
-		return
-	}
-
-	if resp.StatusCode != http.StatusServiceUnavailable {
-		t.Errorf("FAIL(send.%s): unexpected code -> %d != %d", req, resp.StatusCode, http.StatusServiceUnavailable)
-	}
-}
-
 func BenchmarkRoute_1(b *testing.B) {
 	RouteBench(b, 1)
 }

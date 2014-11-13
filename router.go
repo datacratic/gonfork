@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -203,7 +204,7 @@ func (router *Router) publish(state *routerState) {
 }
 
 func (router *Router) normalize(path string) string {
-	return path
+	return strings.Trim(path, "/")
 }
 
 type routerState struct {
@@ -235,6 +236,10 @@ func (state *routerState) GetRoute(inbound string) (*Route, error) {
 func (state *routerState) AddRoute(inbound string, route *Route) error {
 	if _, ok := state.Routes[inbound]; ok {
 		return fmt.Errorf("inbound '%s' already exists", inbound)
+	}
+
+	if err := route.Validate(); err != nil {
+		return fmt.Errorf("inbound '%s' is invalid: %s", inbound, err.Error())
 	}
 
 	state.Routes[inbound] = route
