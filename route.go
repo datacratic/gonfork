@@ -76,6 +76,10 @@ func (route *Route) Validate() error {
 }
 
 func (route *Route) Add(outbound string, rawURL string) error {
+	if route.Outbound == nil {
+		route.Outbound = make(map[string]*url.URL)
+	}
+
 	if _, ok := route.Outbound[outbound]; ok {
 		return fmt.Errorf("outbound '%s' already exists in '%s'", outbound, route.Inbound)
 	}
@@ -90,6 +94,10 @@ func (route *Route) Add(outbound string, rawURL string) error {
 }
 
 func (route *Route) Remove(outbound string) error {
+	if route.Outbound == nil {
+		return fmt.Errorf("outbound '%s' doesn't exists in '%s'", outbound, route.Inbound)
+	}
+
 	if _, ok := route.Outbound[outbound]; !ok {
 		return fmt.Errorf("outbound '%s' doesn't exists in '%s'", outbound, route.Inbound)
 	}
@@ -103,6 +111,10 @@ func (route *Route) Remove(outbound string) error {
 }
 
 func (route *Route) Activate(outbound string) error {
+	if route.Outbound == nil {
+		return fmt.Errorf("outbound '%s' doesn't exists in '%s'", outbound, route.Inbound)
+	}
+
 	if _, ok := route.Outbound[outbound]; !ok {
 		return fmt.Errorf("outbound '%s' doesn't exists in '%s'", outbound, route.Inbound)
 	}
@@ -117,6 +129,8 @@ func (route *Route) ServeHTTP(writer http.ResponseWriter, httpReq *http.Request)
 		http.Error(writer, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	httpReq.Header.Set("X-Nfork", "true")
 
 	var activeURL *url.URL
 
@@ -155,6 +169,7 @@ func (route *Route) forward(
 
 	newReq.URL = URL
 	newReq.Host = URL.Host
+	newReq.RequestURI = ""
 	newReq.Body = ioutil.NopCloser(bytes.NewReader(body))
 
 	resp, err := route.Client.Do(newReq)

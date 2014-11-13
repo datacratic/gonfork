@@ -46,6 +46,9 @@ func main() {
 
 	router.Init()
 
+	log.Printf("starting nfork routing on port: %d\n", *port)
+	log.Printf("starting nfork control on port: %d\n", *controlPort)
+
 	routingServer := &http.Server{
 		Addr:         fmt.Sprintf(":%d", *port),
 		Handler:      router,
