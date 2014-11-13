@@ -3,7 +3,7 @@
 package main
 
 import (
-	"github.com/datacratic/gonfork"
+	"github.com/datacratic/gonfork/nfork"
 	"github.com/datacratic/gorest/rest"
 
 	"encoding/json"
