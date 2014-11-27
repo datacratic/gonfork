@@ -236,7 +236,6 @@ func (route *Route) forward(
 	resp, err := route.Client.Do(newReq)
 	if err != nil {
 		route.record(outbound, Event{Timeout: true, Latency: time.Since(t0)})
-		log.Printf("failed to send request to outbound '%s': %s", outbound, err)
 		return nil, nil, err
 	}
 
@@ -245,7 +244,6 @@ func (route *Route) forward(
 
 	if err != nil {
 		route.record(outbound, Event{Timeout: true, Latency: time.Since(t0)})
-		log.Printf("failed to read response of outbound '%s': %s", outbound, err)
 		return nil, nil, err
 	}
 
