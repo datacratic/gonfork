@@ -259,8 +259,8 @@ func (route *Route) UnmarshalJSON(body []byte) (err error) {
 		Outbound map[string]string `json:"out"`
 		Active   string            `json:"active"`
 
-		Timeout     time.Duration `json:"timeout,omitempty"`
-		TimeoutCode int           `json:"timeoutCode,omitempty"`
+		Timeout     string `json:"timeout,omitempty"`
+		TimeoutCode int    `json:"timeoutCode,omitempty"`
 	}
 
 	if err = json.Unmarshal(body, &routeJSON); err != nil {
@@ -272,12 +272,15 @@ func (route *Route) UnmarshalJSON(body []byte) (err error) {
 
 	for outbound, URL := range routeJSON.Outbound {
 		if route.Outbound[outbound], err = url.Parse(URL); err != nil {
-			return err
+			return
 		}
 	}
 
+	if route.Timeout, err = time.ParseDuration(routeJSON.Timeout); err != nil {
+		return
+	}
+
 	route.Active = routeJSON.Active
-	route.Timeout = routeJSON.Timeout
 	route.TimeoutCode = routeJSON.TimeoutCode
 
 	return
@@ -289,8 +292,8 @@ func (route *Route) MarshalJSON() ([]byte, error) {
 		Active   string            `json:"active"`
 		Outbound map[string]string `json:"out"`
 
-		Timeout     time.Duration `json:"timeout,omitempty"`
-		TimeoutCode int           `json:"timeoutCode,omitempty"`
+		Timeout     string `json:"timeout,omitempty"`
+		TimeoutCode int    `json:"timeoutCode,omitempty"`
 	}
 
 	routeJSON.Inbound = route.Inbound
@@ -301,7 +304,8 @@ func (route *Route) MarshalJSON() ([]byte, error) {
 	}
 
 	routeJSON.Active = route.Active
-	routeJSON.Timeout = route.Timeout
+	routeJSON.Timeout = route.Timeout.String()
+	routeJSON.TimeoutCode = route.TimeoutCode
 
 	return json.Marshal(&routeJSON)
 }

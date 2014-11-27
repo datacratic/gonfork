@@ -3,7 +3,6 @@
 package nfork
 
 import (
-	"encoding/json"
 	"math/rand"
 	"sort"
 )
@@ -37,8 +36,8 @@ func (dist *Distribution) Sample(value uint64) {
 
 	dist.Count++
 
-	if len(dist.Items) < cap(dist.Items) {
-		dist.Items = append(dist.Items, value)
+	if dist.Count < uint64(len(dist.Items)) {
+		dist.Items[dist.Count] = value
 
 	} else if i := rand.Int63n(int64(dist.Count)); int(i) < len(dist.Items) {
 		dist.Items[i] = value
@@ -50,29 +49,27 @@ func (dist *Distribution) Percentiles() (p50, p90, p99, max uint64) {
 		return
 	}
 
-	n := len(dist.Items)
+	n := int(dist.Count)
+	if n > len(dist.Items) {
+		n = len(dist.Items)
+	}
 
 	items := make([]uint64, n)
-	for i, v := range dist.Items {
-		items[i] = v
+	for i := 0; i < n; i++ {
+		items[i] = dist.Items[i]
 	}
 	sort.Sort(sampleArray(items))
 
-	p50 = items[(n/100)*50]
-	p90 = items[(n/100)*90]
-	p99 = items[(n/100)*99]
+	percentile := func(p int) uint64 {
+		return items[int(float32(n)/100*float32(p))]
+	}
+
+	p50 = percentile(50)
+	p90 = percentile(90)
+	p99 = percentile(99)
 	max = dist.max
 
 	return
-}
-
-func (dist *Distribution) MarshalJSON() ([]byte, error) {
-	p50, p90, p99, max := dist.Percentiles()
-
-	distJSON := struct{ p50, p90, p99, max uint64 }{p50, p90, p99, max}
-
-	return json.Marshal(&distJSON)
-
 }
 
 type sampleArray []uint64

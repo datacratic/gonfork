@@ -3,7 +3,9 @@
 package nfork
 
 import (
+	"encoding/json"
 	"math/rand"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -11,10 +13,36 @@ import (
 const DefaultSampleRate = 1 * time.Second
 
 type Stats struct {
-	Requests  uint64         `json:"requests"`
-	Timeouts  uint64         `json:"timeouts"`
-	Latency   Distribution   `json:"latency"`
-	Responses map[int]uint64 `json:"responses"`
+	Requests  uint64
+	Timeouts  uint64
+	Latency   Distribution
+	Responses map[int]uint64
+}
+
+func (stats *Stats) MarshalJSON() ([]byte, error) {
+	var statsJSON struct {
+		Requests  uint64            `json:"requests"`
+		Timeouts  uint64            `json:"timeouts"`
+		Latency   map[string]string `json:"latency"`
+		Responses map[string]uint64 `json:"responses"`
+	}
+
+	statsJSON.Requests = stats.Requests
+	statsJSON.Timeouts = stats.Timeouts
+	statsJSON.Latency = make(map[string]string)
+	statsJSON.Responses = make(map[string]uint64)
+
+	p50, p90, p99, max := stats.Latency.Percentiles()
+	statsJSON.Latency["p50"] = time.Duration(p50).String()
+	statsJSON.Latency["p90"] = time.Duration(p90).String()
+	statsJSON.Latency["p99"] = time.Duration(p99).String()
+	statsJSON.Latency["pmx"] = time.Duration(max).String()
+
+	for code, count := range stats.Responses {
+		statsJSON.Responses[strconv.Itoa(code)] = count
+	}
+
+	return json.Marshal(&statsJSON)
 }
 
 type Event struct {

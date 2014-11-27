@@ -66,6 +66,5 @@ func main() {
 		ReadTimeout:  RoutingReadTimeout,
 		WriteTimeout: RoutingWriteTimeout,
 	}
-	go log.Fatal(routingServer.ListenAndServe())
-
+	log.Fatal(routingServer.ListenAndServe())
 }
