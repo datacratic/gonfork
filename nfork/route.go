@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 )
 
@@ -17,27 +18,39 @@ const DefaultRouteTimeout = 100 * time.Millisecond
 
 type Route struct {
 	Inbound  string
+	Active   string
 	Outbound map[string]*url.URL
 
-	Active  string
-	Timeout time.Duration
+	Stats map[string]*StatsRecorder
+
+	Timeout     time.Duration
+	TimeoutCode int
 
 	Client *http.Client
+
+	initialize sync.Once
 }
 
 func (route *Route) Copy() *Route {
 	newRoute := &Route{
 		Inbound:  route.Inbound,
+		Active:   route.Active,
 		Outbound: make(map[string]*url.URL),
 
-		Active:  route.Active,
-		Timeout: route.Timeout,
+		Stats: make(map[string]*StatsRecorder),
+
+		Timeout:     route.Timeout,
+		TimeoutCode: route.TimeoutCode,
 
 		Client: route.Client,
 	}
 
 	for outbound, URL := range route.Outbound {
 		newRoute.Outbound[outbound] = URL
+	}
+
+	for outbound, stats := range route.Stats {
+		newRoute.Stats[outbound] = stats
 	}
 
 	return newRoute
@@ -60,8 +73,20 @@ func (route *Route) Validate() error {
 		return fmt.Errorf("active outbound '%s' doesn't exist", route.Active)
 	}
 
+	return nil
+}
+
+func (route *Route) Init() {
+	route.initialize.Do(route.init)
+}
+
+func (route *Route) init() {
 	if route.Timeout == 0 {
 		route.Timeout = DefaultRouteTimeout
+	}
+
+	if route.TimeoutCode == 0 {
+		route.TimeoutCode = http.StatusServiceUnavailable
 	}
 
 	if route.Client == nil {
@@ -72,12 +97,19 @@ func (route *Route) Validate() error {
 		route.Client.Timeout = route.Timeout
 	}
 
-	return nil
+	if route.Stats == nil {
+		route.Stats = make(map[string]*StatsRecorder)
+	}
+
+	for outbound := range route.Outbound {
+		route.Stats[outbound] = new(StatsRecorder)
+	}
 }
 
 func (route *Route) Add(outbound string, rawURL string) error {
 	if route.Outbound == nil {
 		route.Outbound = make(map[string]*url.URL)
+		route.Stats = make(map[string]*StatsRecorder)
 	}
 
 	if _, ok := route.Outbound[outbound]; ok {
@@ -90,6 +122,8 @@ func (route *Route) Add(outbound string, rawURL string) error {
 	}
 
 	route.Outbound[outbound] = URL
+	route.Stats[outbound] = new(StatsRecorder)
+
 	return nil
 }
 
@@ -105,6 +139,9 @@ func (route *Route) Remove(outbound string) error {
 	if outbound == route.Active {
 		return fmt.Errorf("can't remove active outbound '%s'", outbound)
 	}
+
+	route.Stats[outbound].Close()
+	delete(route.Stats, outbound)
 
 	delete(route.Outbound, outbound)
 	return nil
@@ -123,7 +160,21 @@ func (route *Route) Activate(outbound string) error {
 	return nil
 }
 
+func (route *Route) ReadStats() map[string]*Stats {
+	stats := make(map[string]*Stats)
+
+	if route.Stats != nil {
+		for outbound, recorder := range route.Stats {
+			stats[outbound] = recorder.Read()
+		}
+	}
+
+	return stats
+}
+
 func (route *Route) ServeHTTP(writer http.ResponseWriter, httpReq *http.Request) {
+	route.Init()
+
 	body, err := ioutil.ReadAll(httpReq.Body)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusBadRequest)
@@ -148,7 +199,7 @@ func (route *Route) ServeHTTP(writer http.ResponseWriter, httpReq *http.Request)
 
 	respHead, respBody, err := route.forward(route.Active, httpReq, activeURL, body)
 	if err != nil {
-		http.Error(writer, err.Error(), http.StatusServiceUnavailable)
+		http.Error(writer, err.Error(), route.TimeoutCode)
 		return
 	}
 
@@ -161,8 +212,18 @@ func (route *Route) ServeHTTP(writer http.ResponseWriter, httpReq *http.Request)
 	writer.Write(respBody)
 }
 
+func (route *Route) record(outbound string, event Event) {
+	stats, ok := route.Stats[outbound]
+	if !ok {
+		log.Panicf("no stats for outbound '%s'", outbound)
+	}
+	stats.Record(event)
+}
+
 func (route *Route) forward(
 	outbound string, oldReq *http.Request, URL *url.URL, body []byte) (*http.Response, []byte, error) {
+
+	t0 := time.Now()
 
 	newReq := new(http.Request)
 	*newReq = *oldReq
@@ -174,6 +235,7 @@ func (route *Route) forward(
 
 	resp, err := route.Client.Do(newReq)
 	if err != nil {
+		route.record(outbound, Event{Timeout: true, Latency: time.Since(t0)})
 		log.Printf("failed to send request to outbound '%s': %s", outbound, err)
 		return nil, nil, err
 	}
@@ -182,10 +244,12 @@ func (route *Route) forward(
 	resp.Body.Close()
 
 	if err != nil {
+		route.record(outbound, Event{Timeout: true, Latency: time.Since(t0)})
 		log.Printf("failed to read response of outbound '%s': %s", outbound, err)
 		return nil, nil, err
 	}
 
+	route.record(outbound, Event{Response: resp.StatusCode, Latency: time.Since(t0)})
 	return resp, respBody, nil
 }
 
@@ -193,9 +257,10 @@ func (route *Route) UnmarshalJSON(body []byte) (err error) {
 	var routeJSON struct {
 		Inbound  string            `json:"in"`
 		Outbound map[string]string `json:"out"`
+		Active   string            `json:"active"`
 
-		Active  string        `json:"active"`
-		Timeout time.Duration `json:"timeout,omitempty"`
+		Timeout     time.Duration `json:"timeout,omitempty"`
+		TimeoutCode int           `json:"timeoutCode,omitempty"`
 	}
 
 	if err = json.Unmarshal(body, &routeJSON); err != nil {
@@ -213,6 +278,7 @@ func (route *Route) UnmarshalJSON(body []byte) (err error) {
 
 	route.Active = routeJSON.Active
 	route.Timeout = routeJSON.Timeout
+	route.TimeoutCode = routeJSON.TimeoutCode
 
 	return
 }
@@ -220,10 +286,11 @@ func (route *Route) UnmarshalJSON(body []byte) (err error) {
 func (route *Route) MarshalJSON() ([]byte, error) {
 	var routeJSON struct {
 		Inbound  string            `json:"in"`
+		Active   string            `json:"active"`
 		Outbound map[string]string `json:"out"`
 
-		Active  string        `json:"active"`
-		Timeout time.Duration `json:"timeout,omitempty"`
+		Timeout     time.Duration `json:"timeout,omitempty"`
+		TimeoutCode int           `json:"timeoutCode,omitempty"`
 	}
 
 	routeJSON.Inbound = route.Inbound

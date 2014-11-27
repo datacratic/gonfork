@@ -79,6 +79,10 @@ func (router *Router) RESTRoutes() rest.Routes {
 		rest.NewRoute("DELETE", prefix+"/:inbound/:outbound", router.RemoveOutbound),
 
 		rest.NewRoute("PUT", prefix+"/:inbound/:outbound/activate", router.Activate),
+
+		rest.NewRoute("GET", prefix+"/stats", router.Stats),
+		rest.NewRoute("GET", prefix+"/:inbound/stats", router.InboundStats),
+		rest.NewRoute("GET", prefix+"/:inbound/:outbound/stats", router.OutboundStats),
 	}
 }
 
@@ -193,6 +197,48 @@ func (router *Router) Activate(inbound, outbound string) error {
 
 	router.publish(state)
 	return nil
+}
+
+func (router *Router) Stats() map[string]map[string]*Stats {
+	router.Init()
+	state := router.state()
+
+	stats := make(map[string]map[string]*Stats)
+
+	for inbound, route := range state.Routes {
+		stats[inbound] = route.ReadStats()
+	}
+
+	return stats
+}
+
+func (router *Router) InboundStats(inbound string) (map[string]*Stats, error) {
+	router.Init()
+	state := router.state()
+
+	route, err := state.GetRoute(router.normalize(inbound))
+	if err != nil {
+		return nil, err
+	}
+
+	return route.ReadStats(), nil
+}
+
+func (router *Router) OutboundStats(inbound, outbound string) (*Stats, error) {
+	router.Init()
+	state := router.state()
+
+	route, err := state.GetRoute(router.normalize(inbound))
+	if err != nil {
+		return nil, err
+	}
+
+	stats, ok := route.ReadStats()[outbound]
+	if !ok {
+		return nil, fmt.Errorf("unknown outbound '%s' for inbound '%s'", outbound, inbound)
+	}
+
+	return stats, nil
 }
 
 func (router *Router) state() *routerState {
