@@ -29,6 +29,7 @@ func main() {
 
 	filter := klogr.NewRestFilter("", klog.FilterOut)
 	filter.AddSuffix("debug")
+	filter.AddSuffix("timeout")
 
 	klog.SetPrinter(
 		klog.Chain(filter,
