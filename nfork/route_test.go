@@ -4,6 +4,7 @@ package nfork
 
 import (
 	"fmt"
+	"github.com/datacratic/goklog/klog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -20,92 +21,29 @@ func TestRoute_Forward(t *testing.T) {
 	server1 := httptest.NewServer(s1)
 	defer server1.Close()
 
-	s2 := &TestService{T: t, Name: "s2", Sleep: 10 * time.Millisecond}
+	s2 := &TestService{T: t, Name: "s2", Sleep: 100 * time.Millisecond}
 	server2 := httptest.NewServer(s2)
 	defer server2.Close()
 
-	route := &Route{Inbound: "route", Timeout: 5 * time.Millisecond}
+	route := &Route{
+		Name:    "route",
+		Timeout: 50 * time.Millisecond,
+		Outbound: map[string]string{
+			"s0": server0.URL,
+			"s1": server1.URL,
+			"s2": server2.URL,
+		},
+		Active: "s1",
+	}
 	serverRoute := httptest.NewServer(route)
 	defer serverRoute.Close()
 
-	route.TestAdd(t, "s0", server0.URL+"/s0")
-	route.TestActivate(t, "s0")
-	route.TestValidate(t)
-
-	ExpectRoute(t, serverRoute, "GET", "", "r00", http.StatusOK, "s0")
-	ExpectRoute(t, serverRoute, "PUT", "", "r01", http.StatusOK, "s0")
-	ExpectRoute(t, serverRoute, "POST", "", "r02", http.StatusOK, "s0")
-	s0.Expect("{GET /s0 r00}", "{PUT /s0 r01}", "{POST /s0 r02}")
-
-	route.TestAdd(t, "s1", server1.URL+"/s1/a")
-	route.TestValidate(t)
-
-	ExpectRoute(t, serverRoute, "GET", "", "r10", http.StatusOK, "s0")
-	ExpectRoute(t, serverRoute, "PUT", "", "r11", http.StatusOK, "s0")
-	ExpectRoute(t, serverRoute, "POST", "", "r12", http.StatusOK, "s0")
-	s0.Expect("{GET /s0 r10}", "{PUT /s0 r11}", "{POST /s0 r12}")
-	s1.Expect("{GET /s1/a r10}", "{PUT /s1/a r11}", "{POST /s1/a r12}")
-
-	route.TestActivate(t, "s1")
-	route.TestValidate(t)
-
-	ExpectRoute(t, serverRoute, "GET", "", "r20", http.StatusCreated, "s1")
-	ExpectRoute(t, serverRoute, "PUT", "", "r21", http.StatusCreated, "s1")
-	ExpectRoute(t, serverRoute, "POST", "", "r22", http.StatusCreated, "s1")
-	s0.Expect("{GET /s0 r20}", "{PUT /s0 r21}", "{POST /s0 r22}")
-	s1.Expect("{GET /s1/a r20}", "{PUT /s1/a r21}", "{POST /s1/a r22}")
-
-	route.TestAdd(t, "s2", server2.URL+"/")
-	route.TestValidate(t)
-
-	ExpectRoute(t, serverRoute, "GET", "", "r30", http.StatusCreated, "s1")
-	ExpectRoute(t, serverRoute, "PUT", "", "r31", http.StatusCreated, "s1")
-	s0.Expect("{GET /s0 r30}", "{PUT /s0 r31}")
-	s1.Expect("{GET /s1/a r30}", "{PUT /s1/a r31}")
-	s2.Expect("{GET / r30}", "{PUT / r31}")
-
-	route.TestActivate(t, "s2")
-	route.TestValidate(t)
-
-	ExpectRouteTimeout(t, serverRoute, "GET", "", "r40")
-	ExpectRouteTimeout(t, serverRoute, "PUT", "", "r41")
-	s0.Expect("{GET /s0 r40}", "{PUT /s0 r41}")
-	s1.Expect("{GET /s1/a r40}", "{PUT /s1/a r41}")
-	s2.Expect("{GET / r40}", "{PUT / r41}")
-
-	route.TestActivate(t, "s1")
-	route.TestRemove(t, "s2")
-	route.TestValidate(t)
-
-	ExpectRoute(t, serverRoute, "GET", "", "r50", http.StatusCreated, "s1")
-	ExpectRoute(t, serverRoute, "PUT", "", "r51", http.StatusCreated, "s1")
-	s0.Expect("{GET /s0 r50}", "{PUT /s0 r51}")
-	s1.Expect("{GET /s1/a r50}", "{PUT /s1/a r51}")
-	s2.Expect()
-}
-
-func (route *Route) TestValidate(t *testing.T) {
-	if err := route.Validate(); err != nil {
-		t.Errorf("FAIL(route.%s): validate() -> %s", route.Inbound, err.Error())
-	}
-}
-
-func (route *Route) TestAdd(t *testing.T, outbound string, rawURL string) {
-	if err := route.Add(outbound, rawURL); err != nil {
-		t.Errorf("FAIL(route.%s): add(%s, %s) -> %s", route.Inbound, outbound, rawURL, err.Error())
-	}
-}
-
-func (route *Route) TestRemove(t *testing.T, outbound string) {
-	if err := route.Remove(outbound); err != nil {
-		t.Errorf("FAIL(route.%s): remove(%s) -> %s", route.Inbound, outbound, err.Error())
-	}
-}
-
-func (route *Route) TestActivate(t *testing.T, outbound string) {
-	if err := route.Activate(outbound); err != nil {
-		t.Errorf("FAIL(route.%s): activate(%s) -> %s", route.Inbound, outbound, err.Error())
-	}
+	ExpectRoute(t, serverRoute, "GET", "a", "r00", http.StatusCreated, "s1")
+	ExpectRoute(t, serverRoute, "PUT", "a/b", "r01", http.StatusCreated, "s1")
+	ExpectRoute(t, serverRoute, "POST", "a/b/c", "r02", http.StatusCreated, "s1")
+	s0.Expect("{GET /a r00}", "{PUT /a/b r01}", "{POST /a/b/c r02}")
+	s1.Expect("{GET /a r00}", "{PUT /a/b r01}", "{POST /a/b/c r02}")
+	s2.Expect("{GET /a r00}", "{PUT /a/b r01}", "{POST /a/b/c r02}")
 }
 
 func BenchmarkRoute_1(b *testing.B) {
@@ -126,7 +64,9 @@ func BenchmarkRoute_8(b *testing.B) {
 
 func RouteBench(b *testing.B, routes int) {
 
-	route := &Route{Inbound: "bob"}
+	klog.SetPrinter(klog.NilPrinter)
+
+	route := &Route{Name: "bob", IdleConnections: 32, Outbound: make(map[string]string)}
 	routeServer := httptest.NewServer(route)
 	defer routeServer.Close()
 
@@ -145,8 +85,8 @@ func RouteBench(b *testing.B, routes int) {
 	for i := 0; i < routes; i++ {
 		name := fmt.Sprintf("s%d", i)
 		servers = append(servers, httptest.NewServer(handler))
-		route.Add(name, servers[len(servers)-1].URL)
-		route.Activate(name)
+		route.Outbound[name] = servers[len(servers)-1].URL
+		route.Active = name
 	}
 
 	route.Validate()

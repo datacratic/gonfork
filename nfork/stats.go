@@ -14,6 +14,7 @@ const DefaultSampleRate = 1 * time.Second
 
 type Stats struct {
 	Requests  uint64
+	Errors    uint64
 	Timeouts  uint64
 	Latency   Distribution
 	Responses map[int]uint64
@@ -22,12 +23,14 @@ type Stats struct {
 func (stats *Stats) MarshalJSON() ([]byte, error) {
 	var statsJSON struct {
 		Requests  uint64            `json:"requests"`
+		Errors    uint64            `json:"errors"`
 		Timeouts  uint64            `json:"timeouts"`
 		Latency   map[string]string `json:"latency"`
 		Responses map[string]uint64 `json:"responses"`
 	}
 
 	statsJSON.Requests = stats.Requests
+	statsJSON.Errors = stats.Errors
 	statsJSON.Timeouts = stats.Timeouts
 	statsJSON.Latency = make(map[string]string)
 	statsJSON.Responses = make(map[string]uint64)
@@ -46,6 +49,7 @@ func (stats *Stats) MarshalJSON() ([]byte, error) {
 }
 
 type Event struct {
+	Error    bool
 	Timeout  bool
 	Response int
 	Latency  time.Duration
@@ -97,7 +101,10 @@ func (recorder *StatsRecorder) Record(event Event) {
 	stats.Requests++
 	stats.Latency.Sample(uint64(event.Latency))
 
-	if event.Timeout {
+	if event.Error {
+		stats.Errors++
+
+	} else if event.Timeout {
 		stats.Timeouts++
 
 	} else {

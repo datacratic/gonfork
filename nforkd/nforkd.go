@@ -3,68 +3,52 @@
 package main
 
 import (
+	"github.com/datacratic/goklog/klog"
+	"github.com/datacratic/goklog/klog/rest"
 	"github.com/datacratic/gonfork/nfork"
 	"github.com/datacratic/gorest/rest"
 
 	"encoding/json"
 	"flag"
-	"fmt"
 	"io/ioutil"
 	"log"
-	"net/http"
-	"time"
 )
 
 var (
-	config = flag.String("config", "routes.json", "file containing initial description of routes")
+	config = flag.String(
+		"config", "nfork.json",
+		"file containing initial description of routes")
 
-	port        = flag.Uint("port", 9090, "port of the nfork forwarding interface")
-	controlPort = flag.Uint("control-port", 9091, "port of the nfork control interface")
-)
-
-const (
-	RoutingReadTimeout  = 100 * time.Millisecond
-	RoutingWriteTimeout = 100 * time.Millisecond
-
-	ControlReadTimeout  = 1 * time.Second
-	ControlWriteTimeout = 1 * time.Second
+	listen = flag.String(
+		"listen", "0.0.0.0:9090",
+		"listen interface for the nfork controller interface")
 )
 
 func main() {
 	flag.Parse()
+
+	filter := klogr.NewRestFilter("", klog.FilterOut)
+	filter.AddSuffix("debug")
+
+	klog.SetPrinter(
+		klog.Chain(filter,
+			klog.Chain(klog.NewDedup(),
+				klog.Fork(
+					klogr.NewRestRing("", 1000),
+					klog.GetPrinter()))))
 
 	body, err := ioutil.ReadFile(*config)
 	if err != nil {
 		log.Fatalf("unable to read file '%s': %s", *config, err.Error())
 	}
 
-	router := new(nfork.Router)
-
-	err = json.Unmarshal(body, &router.Routes)
-	if err != nil {
-		log.Fatalf("unable to configure nforkd: %s\n%s", err.Error(), string(body))
+	control := new(nfork.Controller)
+	if err := json.Unmarshal(body, &control.Routes); err != nil {
+		log.Fatalf("unable to parse config '%s': %s", *config, err.Error())
 	}
 
-	router.Init()
+	klog.KPrintf("init.info", "starting nfork control on %s\n", *listen)
+	control.Start()
 
-	log.Printf("starting nfork routing on port: %d\n", *port)
-	log.Printf("starting nfork control on port: %d\n", *controlPort)
-
-	controlServer := &rest.Endpoint{
-		Server: &http.Server{
-			Addr:         fmt.Sprintf(":%d", *controlPort),
-			ReadTimeout:  ControlReadTimeout,
-			WriteTimeout: ControlWriteTimeout,
-		},
-	}
-	controlServer.AddRoutable(router)
-	controlServer.ListenAndServe()
-
-	routingServer := &http.Server{
-		Addr:         fmt.Sprintf(":%d", *port),
-		Handler:      router,
-		ReadTimeout:  RoutingReadTimeout,
-		WriteTimeout: RoutingWriteTimeout,
-	}
-	log.Fatal(routingServer.ListenAndServe())
+	rest.ListenAndServe(*listen, nil)
 }
