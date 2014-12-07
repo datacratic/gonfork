@@ -8,12 +8,18 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"net/http"
-	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
 )
+
+func AllocatePort() (listen, url string) {
+	listen = fmt.Sprintf(":%d", rand.Intn(1000)+23456)
+	url = "http://localhost" + listen
+	return
+}
 
 type TestService struct {
 	T    *testing.T
@@ -96,8 +102,8 @@ func (service *TestService) Expect(requests ...string) {
 	}
 }
 
-func ExpectRoute(t *testing.T, server *httptest.Server, method, path, req string, expCode int, expResp string) {
-	resp, body, err := SendTo(server, method, path, req)
+func ExpectInbound(t *testing.T, URL, method, path, req string, expCode int, expResp string) {
+	resp, body, err := SendTo(URL, method, path, req)
 	if err != nil {
 		t.Errorf("FAIL(send.%s): post failed -> %s", req, err.Error())
 		return
@@ -116,8 +122,8 @@ func ExpectRoute(t *testing.T, server *httptest.Server, method, path, req string
 	}
 }
 
-func ExpectRouteTimeout(t *testing.T, server *httptest.Server, method, path, req string) {
-	resp, _, err := SendTo(server, method, path, req)
+func ExpectInboundTimeout(t *testing.T, URL, method, path, req string) {
+	resp, _, err := SendTo(URL, method, path, req)
 	if err != nil {
 		t.Errorf("FAIL(send.%s): post failed -> %s", req, err.Error())
 		return
@@ -128,8 +134,8 @@ func ExpectRouteTimeout(t *testing.T, server *httptest.Server, method, path, req
 	}
 }
 
-func SendTo(server *httptest.Server, method, path, body string) (*http.Response, string, error) {
-	path = server.URL + "/" + path
+func SendTo(URL, method, path, body string) (*http.Response, string, error) {
+	path = URL + "/" + path
 
 	req, err := http.NewRequest(method, path, bytes.NewReader([]byte(body)))
 	if err != nil {

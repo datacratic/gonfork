@@ -12,6 +12,7 @@ import (
 	"flag"
 	"io/ioutil"
 	"log"
+	_ "net/http/pprof"
 )
 
 var (
@@ -43,13 +44,14 @@ func main() {
 		log.Fatalf("unable to read file '%s': %s", *config, err.Error())
 	}
 
-	control := new(nfork.Controller)
-	if err := json.Unmarshal(body, &control.Routes); err != nil {
+	controller := new(nfork.Controller)
+	if err := json.Unmarshal(body, &controller.Inbounds); err != nil {
 		log.Fatalf("unable to parse config '%s': %s", *config, err.Error())
 	}
 
 	klog.KPrintf("init.info", "starting nfork control on %s\n", *listen)
-	control.Start()
+	controller.Start()
 
+	rest.AddService(controller)
 	rest.ListenAndServe(*listen, nil)
 }

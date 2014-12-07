@@ -7,12 +7,22 @@ import (
 	"sort"
 )
 
+// DefaultDistributionSize will be used as the default size for the
+// Distribution.Items if not otherwise set.
 const DefaultDistributionSize = 1000
 
+// Distribution collects a set of outcomes to calculate various percentiles
+// using reservoir sampling to avoid unbounded memory usage.
 type Distribution struct {
+
+	// Items holds the value whose sie determines the size of the reservoir.
 	Items []uint64
+
+	// Count is the number of elements sampled.
 	Count uint64
-	Rand  *rand.Rand
+
+	// Rand is the RNG used for sampling.
+	Rand *rand.Rand
 
 	max uint64
 }
@@ -27,6 +37,7 @@ func (dist *Distribution) init() {
 	}
 }
 
+// Sample adds a new value to the distribution.
 func (dist *Distribution) Sample(value uint64) {
 	dist.init()
 
@@ -44,6 +55,8 @@ func (dist *Distribution) Sample(value uint64) {
 	}
 }
 
+// Percentiles returns the approximated 99th, 90th and 50th percentile as well
+// as the maximum value seen.
 func (dist *Distribution) Percentiles() (p50, p90, p99, max uint64) {
 	if len(dist.Items) == 0 {
 		return

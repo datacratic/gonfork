@@ -10,16 +10,27 @@ import (
 	"time"
 )
 
-const DefaultSampleRate = 1 * time.Second
-
+// Stats contains the stats of an outbound at a given point in time.
 type Stats struct {
-	Requests  uint64
-	Errors    uint64
-	Timeouts  uint64
-	Latency   Distribution
+
+	// Requests counts the number of requests made.
+	Requests uint64
+
+	// Errors counts the number of errors encountered.
+	Errors uint64
+
+	// Timeouts counts the number of timeouts encountered.
+	Timeouts uint64
+
+	// Latency is the latency distribution of all requests.
+	Latency Distribution
+
+	// Responses counts the number of responses received for an HTTP status
+	// code.
 	Responses map[int]uint64
 }
 
+// MarshalJSON defines a custom JSON format for encoding/json.
 func (stats *Stats) MarshalJSON() ([]byte, error) {
 	var statsJSON struct {
 		Requests  uint64            `json:"requests"`
@@ -48,15 +59,33 @@ func (stats *Stats) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&statsJSON)
 }
 
+// Event contains the outcome of an HTTP request.
 type Event struct {
-	Error    bool
-	Timeout  bool
+
+	// Error indicates that an error occured.
+	Error bool
+
+	// Timeout indicates that the request timed out.
+	Timeout bool
+
+	// Response is the HTTP response code received.
 	Response int
-	Latency  time.Duration
+
+	// Latency mesures the latency of the request.
+	Latency time.Duration
 }
 
+// DefaultSampleRate is used if Rate is not set set in StatsRecorder.
+const DefaultSampleRate = 1 * time.Second
+
+// StatsRecorder records stats for a given outbound and updates them at a
+// given rate.
 type StatsRecorder struct {
+
+	// Rate at which stats are updated.
 	Rate time.Duration
+
+	// Rand is the RNG used for stats sampling.
 	Rand *rand.Rand
 
 	initialize sync.Once
@@ -67,6 +96,7 @@ type StatsRecorder struct {
 	shutdownC chan int
 }
 
+// Init initializes the object.
 func (recorder *StatsRecorder) Init() {
 	recorder.initialize.Do(recorder.init)
 }
@@ -87,11 +117,13 @@ func (recorder *StatsRecorder) init() {
 	go recorder.run()
 }
 
+// Close terminates the stats recorder.
 func (recorder *StatsRecorder) Close() {
 	recorder.Init()
 	recorder.shutdownC <- 1
 }
 
+// Record records the given outcome.
 func (recorder *StatsRecorder) Record(event Event) {
 	recorder.Init()
 	recorder.mutex.Lock()
@@ -117,6 +149,7 @@ func (recorder *StatsRecorder) Record(event Event) {
 	recorder.mutex.Unlock()
 }
 
+// Read returns the last updated stats.
 func (recorder *StatsRecorder) Read() (stats *Stats) {
 	recorder.Init()
 	recorder.mutex.Lock()
