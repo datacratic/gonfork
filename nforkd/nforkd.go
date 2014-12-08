@@ -4,7 +4,6 @@ package main
 
 import (
 	"github.com/datacratic/goklog/klog"
-	"github.com/datacratic/goklog/klog/rest"
 	"github.com/datacratic/gonfork/nfork"
 	"github.com/datacratic/gorest/rest"
 
@@ -28,15 +27,11 @@ var (
 func main() {
 	flag.Parse()
 
-	filter := klogr.NewRestFilter("", klog.FilterOut)
-	filter.AddSuffix("debug")
-	filter.AddSuffix("timeout")
-
 	klog.SetPrinter(
-		klog.Chain(filter,
+		klog.Chain(klog.NewFilterREST("", klog.FilterOut).AddSuffix("debug", "timeout"),
 			klog.Chain(klog.NewDedup(),
 				klog.Fork(
-					klogr.NewRestRing("", 1000),
+					klog.NewRingREST("", 1000),
 					klog.GetPrinter()))))
 
 	body, err := ioutil.ReadFile(*config)
