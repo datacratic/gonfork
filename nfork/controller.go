@@ -154,7 +154,7 @@ func (control *Controller) AddInbound(inbound *Inbound) error {
 		return fmt.Errorf("unable to add inbound '%s': %s", inbound.Name, err)
 	}
 
-	klog.KPrintf("controller", "AddInbound(%s, %s)", inbound.Name, inbound.Listen)
+	klog.KPrintf("controller.info", "AddInbound(%s, %s)", inbound.Name, inbound.Listen)
 	control.inbounds[inbound.Name] = server
 
 	return nil
@@ -170,7 +170,7 @@ func (control *Controller) RemoveInbound(inbound string) error {
 		return fmt.Errorf("unknown inbound '%s'", inbound)
 	}
 
-	klog.KPrintf("controller", "RemoveInbound(%s)", inbound)
+	klog.KPrintf("controller.info", "RemoveInbound(%s)", inbound)
 
 	server.Close()
 	delete(control.inbounds, inbound)
@@ -188,7 +188,7 @@ func (control *Controller) AddOutbound(inbound, outbound, addr string) error {
 		return fmt.Errorf("unknown inbound '%s'", inbound)
 	}
 
-	klog.KPrintf("controller", "AddOutbound(%s, %s, %s)", inbound, outbound, addr)
+	klog.KPrintf("controller.info", "AddOutbound(%s, %s, %s)", inbound, outbound, addr)
 	return server.AddOutbound(outbound, addr)
 }
 
@@ -202,7 +202,7 @@ func (control *Controller) RemoveOutbound(inbound, outbound string) error {
 		return fmt.Errorf("unknown inbound '%s'", inbound)
 	}
 
-	klog.KPrintf("controller", "RemoveOutbound(%s, %s)", inbound, outbound)
+	klog.KPrintf("controller.info", "RemoveOutbound(%s, %s)", inbound, outbound)
 	return server.RemoveOutbound(outbound)
 }
 
@@ -216,6 +216,6 @@ func (control *Controller) ActivateOutbound(inbound, outbound string) error {
 		return fmt.Errorf("unknown inbound '%s'", inbound)
 	}
 
-	klog.KPrintf("controller", "ActivateOutbound(%s, %s)", inbound, outbound)
+	klog.KPrintf("controller.info", "ActivateOutbound(%s, %s)", inbound, outbound)
 	return server.ActivateOutbound(outbound)
 }
