@@ -31,7 +31,7 @@ func NewController(inbounds []*Inbound) *Controller {
 
 // RESTRoutes defines the REST inteface for a Controller.
 func (control *Controller) RESTRoutes() rest.Routes {
-	prefix := "/v1"
+	prefix := "/v1/nfork"
 	return rest.Routes{
 		rest.NewRoute(prefix, "GET", control.List),
 		rest.NewRoute(prefix, "PUT", control.AddInbound),
