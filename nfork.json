@@ -10,5 +10,15 @@
         "active": "prod",
         "timeout": "100ms",
         "idleConn": 64
+    },
+
+    {
+        "name": "bar",
+        "listen": ":9081",
+        "out": {
+            "prod": "localhost:8090",
+            "logging": "localhost:8091"
+        },
+        "active": "prod",
     }
 ]
