@@ -52,13 +52,13 @@ An nfork inbound endpoint is configured using JSON. Here's a simple example:
 
 | Key | Description |
 | --- | --- |
-| name | Name used to refer to the inbound endpoint |
-| listen | Where to listen for the incoming HTTP stream |
-| out | Set of named outbound backends where the HTTP stream will be duplicated to |
-| active | Name of the outbound backend whose response will be forwarded |
-| timeout | Requests will expire after this amount of time (optional) |
-| timeoutCode | Use this HTTP status code in the event of a time out (optional) |
-| idleConn | Size of the idle connection pool (optional) |
+| `name` | Name used to refer to the inbound endpoint |
+| `listen` | Where to listen for the incoming HTTP stream |
+| `out` | Set of named outbound backends where the HTTP stream will be duplicated to |
+| `active` | Name of the outbound backend whose response will be forwarded |
+| `timeout` | Requests will expire after this amount of time (optional) |
+| `timeoutCode` | Use this HTTP status code in the event of a time out (optional) |
+| `idleConn` | Size of the idle connection pool (optional) |
 
 The initial configuration for the nfork daemon `nforkd` is passed using the
 command line argument `--config` which points to a file containing an array of
@@ -68,18 +68,17 @@ Once started, `nforkd` provides a REST interface.
 
 | Path | Method | Description |
 | --- | --- | --- |
-| /v1/nfork | GET | Returns all inbound endpoints |
-| /v1/nfork | POST | Add an inbound endpoint |
-| /v1/nfork/stats | GET | Returns the stats for all inbound endpoints |
-| /v1/nfork/:inbound | GET | Returns the given inbound endpoint |
-| /v1/nfork/:inbound | DELETE | Removes the given inbound endpoint |
-| /v1/nfork/:inbound/stats | GET | Returns the stats for the given inbound endpoint |
-| /v1/nfork/:inbound/:outbound | PUT | Add an outbound endpoint to the given inbound endpoint |
-| /v1/nfork/:inbound/:outbound | DELETE | Removes the given outbound endpoint |
-| /v1/nfork/:inbound/:outbound/stats | GET | Returns the stats of the given outbound endpoint |
-| --- | --- | --- |
-| /debug/klog |  | See the [klog](github.com/datacratic/goklog) documentation |
-| /debug/pprof | GET | See the [pprof](https://godoc.org/net/http/pprof) documentation |
+| `/v1/nfork` | `GET` | Returns all inbound endpoints |
+| `/v1/nfork` | `POST` | Add an inbound endpoint |
+| `/v1/nfork/stats` | `GET` | Returns the stats for all inbound endpoints |
+| `/v1/nfork/:inbound` | `GET` | Returns the given inbound endpoint |
+| `/v1/nfork/:inbound` | `DELETE` | Removes the given inbound endpoint |
+| `/v1/nfork/:inbound/stats` | `GET` | Returns the stats for the given inbound endpoint |
+| `/v1/nfork/:inbound/:outbound` | `PUT` | Add an outbound endpoint to the given inbound endpoint |
+| `/v1/nfork/:inbound/:outbound` | `DELETE` | Removes the given outbound endpoint |
+| `/v1/nfork/:inbound/:outbound/stats` | `GET` | Returns the stats of the given outbound endpoint |
+| `/debug/klog` |  | See the [klog](http://github.com/datacratic/goklog) documentation |
+| `/debug/pprof` | `GET` | See the [pprof](https://godoc.org/net/http/pprof) documentation |
 
 ## License ##
 
