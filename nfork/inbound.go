@@ -310,23 +310,30 @@ func (inbound *Inbound) error(title, outbound string, err error, t0 time.Time) e
 		return inbound.error(title, outbound, urlErr.Err, t0)
 
 	} else if netErr, ok := err.(*net.OpError); ok {
-		if netErr.Op == "dial" {
-			if errno, ok := netErr.Err.(syscall.Errno); ok && errno == syscall.ECONNREFUSED {
-				klog.KPrintf(klog.Keyf("%.%s.%s.timeout", inbound.Name, outbound, title), "%T -> %v", err, err)
-				inbound.record(outbound, Event{Timeout: true, Latency: time.Since(t0)})
-				return err
-			}
+		if errno, ok := netErr.Err.(syscall.Errno); ok && errno == syscall.ECONNREFUSED {
+			klog.KPrintf(klog.Keyf("%s.%s.%s.timeout", inbound.Name, outbound, title), "%T -> %v", err, err)
+			inbound.record(outbound, Event{Timeout: true, Latency: time.Since(t0)})
+			return err
 		}
+
 		return inbound.error(title, outbound, netErr.Err, t0)
 	}
 
-	// I hate this but net and net/http provides no useful errors or indicators
-	// to that a request ended up in a timeout. Furthermore, most of the errors
-	// are either not exported or are just randomly created as string. In other
-	// words, this is a crappy interface that needs to be fixed bad.
 	switch err.Error() {
 
+	// Prevents spamming the logs with closed connections even though they were
+	// not properly closed.
+	case "EOF":
+		inbound.record(outbound, Event{Error: true, Latency: time.Since(t0)})
+		return err
+
+	// I hate this but net and net/http provides no useful errors or indicators
+	// that a request ended up in a timeout. Furthermore, most of the errors are
+	// either not exported or are just randomly created as string. In other
+	// words, this is a crappy interface that needs to be fixed bad.
 	case "use of closed network connection": // net.errClosing
+		fallthrough
+	case "net/http: transport closed before response was received":
 		fallthrough
 	case "net/http: request canceled while waiting for connection":
 		klog.KPrintf(klog.Keyf("%s.%s.%s.timeout", inbound.Name, outbound, title), "%T -> %v", err, err)
