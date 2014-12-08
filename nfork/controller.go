@@ -3,6 +3,7 @@
 package nfork
 
 import (
+	"github.com/datacratic/goklog/klog"
 	"github.com/datacratic/gorest/rest"
 
 	"fmt"
@@ -34,14 +35,14 @@ func (control *Controller) RESTRoutes() rest.Routes {
 	prefix := "/v1/nfork"
 	return rest.Routes{
 		rest.NewRoute(prefix, "GET", control.List),
-		rest.NewRoute(prefix, "PUT", control.AddInbound),
+		rest.NewRoute(prefix, "POST", control.AddInbound),
 		rest.NewRoute(prefix+"/stats", "GET", control.ReadStats),
 
 		rest.NewRoute(prefix+"/:inbound", "GET", control.ListInbound),
-		rest.NewRoute(prefix+"/:inbound", "PUT", control.AddOutbound),
 		rest.NewRoute(prefix+"/:inbound", "DELETE", control.RemoveInbound),
 		rest.NewRoute(prefix+"/:inbound/stats", "GET", control.ReadInboundStats),
 
+		rest.NewRoute(prefix+"/:inbound/:outbound", "PUT", control.AddOutbound),
 		rest.NewRoute(prefix+"/:inbound/:outbound", "DELETE", control.RemoveOutbound),
 		rest.NewRoute(prefix+"/:inbound/:outbound/stats", "GET", control.ReadOutboundStats),
 	}
@@ -153,6 +154,7 @@ func (control *Controller) AddInbound(inbound *Inbound) error {
 		return fmt.Errorf("unable to add inbound '%s': %s", inbound.Name, err)
 	}
 
+	klog.KPrintf("controller", "AddInbound(%s, %s)", inbound.Name, inbound.Listen)
 	control.inbounds[inbound.Name] = server
 
 	return nil
@@ -167,6 +169,8 @@ func (control *Controller) RemoveInbound(inbound string) error {
 	if !ok {
 		return fmt.Errorf("unknown inbound '%s'", inbound)
 	}
+
+	klog.KPrintf("controller", "RemoveInbound(%s)", inbound)
 
 	server.Close()
 	delete(control.inbounds, inbound)
@@ -184,6 +188,7 @@ func (control *Controller) AddOutbound(inbound, outbound, addr string) error {
 		return fmt.Errorf("unknown inbound '%s'", inbound)
 	}
 
+	klog.KPrintf("controller", "AddOutbound(%s, %s, %s)", inbound, outbound, addr)
 	return server.AddOutbound(outbound, addr)
 }
 
@@ -197,6 +202,7 @@ func (control *Controller) RemoveOutbound(inbound, outbound string) error {
 		return fmt.Errorf("unknown inbound '%s'", inbound)
 	}
 
+	klog.KPrintf("controller", "RemoveOutbound(%s, %s)", inbound, outbound)
 	return server.RemoveOutbound(outbound)
 }
 
@@ -210,5 +216,6 @@ func (control *Controller) ActivateOutbound(inbound, outbound string) error {
 		return fmt.Errorf("unknown inbound '%s'", inbound)
 	}
 
+	klog.KPrintf("controller", "ActivateOutbound(%s, %s)", inbound, outbound)
 	return server.ActivateOutbound(outbound)
 }
