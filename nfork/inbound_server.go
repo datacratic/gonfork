@@ -51,6 +51,7 @@ func NewInboundServer(inbound *Inbound) (*InboundServer, error) {
 // Close closes the HTTP server releasing all associated resources.
 func (server *InboundServer) Close() {
 	server.listener.Close()
+	server.getInbound().Close()
 }
 
 // ServeHTTP forwards the given HTTP request to the managed inbound.
@@ -61,16 +62,6 @@ func (server *InboundServer) ServeHTTP(writer http.ResponseWriter, httpReq *http
 // List returns the managed inbound.
 func (server *InboundServer) List() *Inbound {
 	return server.getInbound()
-}
-
-// ReadStats calls ReadStats on the managed inbound.
-func (server *InboundServer) ReadStats() map[string]*Stats {
-	return server.getInbound().ReadStats()
-}
-
-// ReadOutboundStats calls ReadOutboundStats on the managed inbound.
-func (server *InboundServer) ReadOutboundStats(outbound string) (*Stats, error) {
-	return server.getInbound().ReadOutboundStats(outbound)
 }
 
 // AddOutbound calls AddOutbound on the managed inbound.

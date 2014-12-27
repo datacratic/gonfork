@@ -4,15 +4,16 @@ package nfork
 
 import (
 	"github.com/datacratic/goklog/klog"
+	"github.com/datacratic/gometer/meter"
 
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -24,9 +25,6 @@ const DefaultInboundTimeout = 1 * time.Second
 
 // Inbound duplicates HTTP requests to a set of outbounds and only forwards the
 // HTTP response of an active outbound. All other responses are dropped.
-//
-// Stats are also gathered for each outbound and each outbounds can also be
-// configured to timeout.
 type Inbound struct {
 	// Name is the name associated with this inbound.
 	Name string
@@ -62,7 +60,7 @@ type Inbound struct {
 
 	initialize sync.Once
 
-	stats map[string]*StatsRecorder
+	stats *InboundStats
 }
 
 // Copy returns a copy of the inbound object.
@@ -79,15 +77,11 @@ func (inbound *Inbound) Copy() *Inbound {
 		IdleConnections: inbound.IdleConnections,
 
 		Client: inbound.Client,
-		stats:  make(map[string]*StatsRecorder),
+		stats:  inbound.stats,
 	}
 
 	for outbound, addr := range inbound.Outbound {
 		newInbound.Outbound[outbound] = addr
-	}
-
-	for outbound, stats := range inbound.stats {
-		newInbound.stats[outbound] = stats
 	}
 
 	return newInbound
@@ -147,40 +141,20 @@ func (inbound *Inbound) init() {
 		inbound.Client.Timeout = inbound.Timeout
 	}
 
-	if inbound.stats == nil {
-		inbound.stats = make(map[string]*StatsRecorder)
-	}
-
-	for outbound := range inbound.Outbound {
-		inbound.stats[outbound] = new(StatsRecorder)
-	}
+	inbound.stats = new(InboundStats)
+	inbound.stats.init(inbound.Name)
 }
 
-// ReadStats returns the stats associated with each outbounds.
-func (inbound *Inbound) ReadStats() map[string]*Stats {
-	stats := make(map[string]*Stats)
-
-	for outbound, recorder := range inbound.stats {
-		stats[outbound] = recorder.Read()
-	}
-
-	return stats
-}
-
-// ReadOutboundStats returns the stats associated with a given outbound.
-func (inbound *Inbound) ReadOutboundStats(outbound string) (*Stats, error) {
-	if _, ok := inbound.Outbound[outbound]; !ok {
-		return nil, fmt.Errorf("unknown outbound '%s' for inbound '%s'", outbound, inbound.Name)
-	}
-
-	return inbound.stats[outbound].Read(), nil
+// Close cleans up any resources associated with this inbound.
+func (inbound *Inbound) Close() {
+	inbound.stats.close(inbound.Name)
 }
 
 // AddOutbound adds a new outbound associated with the given address. If the
 // outbound already exists, it is overridden.
 func (inbound *Inbound) AddOutbound(outbound, addr string) error {
 	inbound.Outbound[outbound] = addr
-	inbound.stats[outbound] = new(StatsRecorder)
+	inbound.stats.Outbounds.RecordInt(len(inbound.Outbound))
 	return nil
 }
 
@@ -196,7 +170,7 @@ func (inbound *Inbound) RemoveOutbound(outbound string) error {
 	}
 
 	delete(inbound.Outbound, outbound)
-	delete(inbound.stats, outbound)
+	inbound.stats.Outbounds.RecordInt(len(inbound.Outbound))
 
 	return nil
 }
@@ -217,10 +191,12 @@ func (inbound *Inbound) ActivateOutbound(outbound string) error {
 // dropped.
 func (inbound *Inbound) ServeHTTP(writer http.ResponseWriter, httpReq *http.Request) {
 	inbound.Init()
+	inbound.stats.Requests.RecordHit()
 
 	body, err := ioutil.ReadAll(httpReq.Body)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusBadRequest)
+		inbound.stats.ReadErrors.RecordHit()
 		return
 	}
 
@@ -237,7 +213,7 @@ func (inbound *Inbound) ServeHTTP(writer http.ResponseWriter, httpReq *http.Requ
 	}
 
 	if len(activeHost) == 0 {
-		log.Panicf("no active outbound '%s'", inbound.Active)
+		klog.KPanicf("no active outbound '%s'", inbound.Active)
 	}
 
 	respHead, respBody, err := inbound.forward(inbound.Active, httpReq, activeHost, body)
@@ -253,14 +229,6 @@ func (inbound *Inbound) ServeHTTP(writer http.ResponseWriter, httpReq *http.Requ
 
 	writer.WriteHeader(respHead.StatusCode)
 	writer.Write(respBody)
-}
-
-func (inbound *Inbound) record(outbound string, event Event) {
-	stats, ok := inbound.stats[outbound]
-	if !ok {
-		log.Panicf("no stats for outbound '%s'", outbound)
-	}
-	stats.Record(event)
 }
 
 func (inbound *Inbound) parseAddr(addr string) (host, scheme string) {
@@ -291,32 +259,43 @@ func (inbound *Inbound) forward(
 
 	resp, err := inbound.Client.Do(newReq)
 	if err != nil {
-		return nil, nil, inbound.error("send", outbound, err, t0)
+		inbound.stats.Latency.RecordDuration(outbound, time.Since(t0))
+		return nil, nil, inbound.error("send", outbound, err)
 	}
 
 	respBody, err := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 	if err != nil {
-		return nil, nil, inbound.error("recv", outbound, err, t0)
+		inbound.stats.Latency.RecordDuration(outbound, time.Since(t0))
+		return nil, nil, inbound.error("recv", outbound, err)
 	}
 
-	inbound.record(outbound, Event{Response: resp.StatusCode, Latency: time.Since(t0)})
+	inbound.stats.Latency.RecordDuration(outbound, time.Since(t0))
+	inbound.stats.Responses.RecordHit(meter.Join(outbound, strconv.Itoa(resp.StatusCode)))
+
 	return resp, respBody, nil
 }
 
-func (inbound *Inbound) error(title, outbound string, err error, t0 time.Time) error {
+// This entire function is my attempt at extracting useful information out of
+// the errors returned by the net/http package to be able to distinguish between
+// a timeout and an actual error. Turns out that doing something so simple is a
+// god-damn nightmare that is impossible to get right and is likely to break
+// with each new golang release. Writting this function has caused severe and
+// irreparable damage to my soul.
+func (inbound *Inbound) error(title, outbound string, err error) error {
 
 	if urlErr, ok := err.(*url.Error); ok {
-		return inbound.error(title, outbound, urlErr.Err, t0)
+		return inbound.error(title, outbound, urlErr.Err)
 
 	} else if netErr, ok := err.(*net.OpError); ok {
 		if errno, ok := netErr.Err.(syscall.Errno); ok && errno == syscall.ECONNREFUSED {
 			klog.KPrintf(klog.Keyf("%s.%s.%s.timeout", inbound.Name, outbound, title), "%T -> %v", err, err)
-			inbound.record(outbound, Event{Timeout: true, Latency: time.Since(t0)})
+
+			inbound.stats.Timeouts.RecordHit(outbound)
 			return err
 		}
 
-		return inbound.error(title, outbound, netErr.Err, t0)
+		return inbound.error(title, outbound, netErr.Err)
 	}
 
 	switch err.Error() {
@@ -324,7 +303,7 @@ func (inbound *Inbound) error(title, outbound string, err error, t0 time.Time) e
 	// Prevents spamming the logs with closed connections even though they were
 	// not properly closed.
 	case "EOF":
-		inbound.record(outbound, Event{Error: true, Latency: time.Since(t0)})
+		inbound.stats.Errors.RecordHit(outbound)
 		return err
 
 	// I hate this but net and net/http provides no useful errors or indicators
@@ -336,13 +315,13 @@ func (inbound *Inbound) error(title, outbound string, err error, t0 time.Time) e
 	case "net/http: transport closed before response was received":
 		fallthrough
 	case "net/http: request canceled while waiting for connection":
+		inbound.stats.Timeouts.RecordHit(outbound)
 		klog.KPrintf(klog.Keyf("%s.%s.%s.timeout", inbound.Name, outbound, title), "%T -> %v", err, err)
-		inbound.record(outbound, Event{Timeout: true, Latency: time.Since(t0)})
 		return err
 	}
 
+	inbound.stats.Errors.RecordHit(outbound)
 	klog.KPrintf(klog.Keyf("%s.%s.%s.error", inbound.Name, outbound, title), "%T -> %v", err, err)
-	inbound.record(outbound, Event{Error: true, Latency: time.Since(t0)})
 	return err
 }
 

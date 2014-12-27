@@ -7,7 +7,6 @@ import (
 	"github.com/datacratic/gorest/rest"
 
 	"fmt"
-	"log"
 	"sync"
 )
 
@@ -36,15 +35,12 @@ func (control *Controller) RESTRoutes() rest.Routes {
 	return rest.Routes{
 		rest.NewRoute(prefix, "GET", control.List),
 		rest.NewRoute(prefix, "POST", control.AddInbound),
-		rest.NewRoute(prefix+"/stats", "GET", control.ReadStats),
 
 		rest.NewRoute(prefix+"/:inbound", "GET", control.ListInbound),
 		rest.NewRoute(prefix+"/:inbound", "DELETE", control.RemoveInbound),
-		rest.NewRoute(prefix+"/:inbound/stats", "GET", control.ReadInboundStats),
 
 		rest.NewRoute(prefix+"/:inbound/:outbound", "PUT", control.AddOutbound),
 		rest.NewRoute(prefix+"/:inbound/:outbound", "DELETE", control.RemoveOutbound),
-		rest.NewRoute(prefix+"/:inbound/:outbound/stats", "GET", control.ReadOutboundStats),
 	}
 }
 
@@ -55,12 +51,12 @@ func (control *Controller) Start() {
 
 	for i, inbound := range control.Inbounds {
 		if inbound == nil {
-			log.Fatalf("nil inbound at index %d", i)
+			klog.KFatalf("controller.error", "nil inbound at index %d", i)
 		}
 
 		server, err := NewInboundServer(inbound)
 		if err != nil {
-			log.Panicf(err.Error())
+			klog.KFatal("controller.error", err.Error())
 		}
 
 		control.inbounds[inbound.Name] = server
@@ -98,46 +94,6 @@ func (control *Controller) ListInbound(inbound string) (*Inbound, error) {
 	}
 
 	return server.List(), nil
-}
-
-// ReadStats returns the stats associated with each inbounds.
-func (control *Controller) ReadStats() map[string]map[string]*Stats {
-	control.mutex.Lock()
-	defer control.mutex.Unlock()
-
-	stats := make(map[string]map[string]*Stats)
-	for inbound, server := range control.inbounds {
-		stats[inbound] = server.ReadStats()
-	}
-
-	return stats
-}
-
-// ReadInboundStats returns the stats associated with the given inbound.
-func (control *Controller) ReadInboundStats(inbound string) (map[string]*Stats, error) {
-	control.mutex.Lock()
-	defer control.mutex.Unlock()
-
-	server, ok := control.inbounds[inbound]
-	if !ok {
-		return nil, fmt.Errorf("unknown inbound '%s'", inbound)
-	}
-
-	return server.ReadStats(), nil
-}
-
-// ReadOutboundStats returns the stats associated with the given inbound's
-// outbound.
-func (control *Controller) ReadOutboundStats(inbound, outbound string) (*Stats, error) {
-	control.mutex.Lock()
-	defer control.mutex.Unlock()
-
-	server, ok := control.inbounds[inbound]
-	if !ok {
-		return nil, fmt.Errorf("unknown inbound '%s'", inbound)
-	}
-
-	return server.ReadOutboundStats(outbound)
 }
 
 // AddInbound creates a new InboundServer for the given inbound and launches it.

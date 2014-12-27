@@ -4,13 +4,13 @@ package main
 
 import (
 	"github.com/datacratic/goklog/klog"
+	"github.com/datacratic/gometer/meter"
 	"github.com/datacratic/gonfork/nfork"
 	"github.com/datacratic/gorest/rest"
 
 	"encoding/json"
 	"flag"
 	"io/ioutil"
-	"log"
 	_ "net/http/pprof"
 )
 
@@ -22,6 +22,10 @@ var (
 	listen = flag.String(
 		"listen", "0.0.0.0:9090",
 		"listen interface for the nfork controller interface")
+
+	carbon = flag.String(
+		"carbon", "",
+		"carbon host where metrics should be directed to")
 )
 
 func main() {
@@ -34,14 +38,19 @@ func main() {
 					klog.NewRingREST("", 1000),
 					klog.GetPrinter()))))
 
+	meter.Handle(meter.NewRESTHandler(""))
+	if *carbon != "" {
+		meter.Handle(&meter.CarbonHandler{URLs: []string{*carbon}})
+	}
+
 	body, err := ioutil.ReadFile(*config)
 	if err != nil {
-		log.Fatalf("unable to read file '%s': %s", *config, err.Error())
+		klog.KFatalf("main.error", "unable to read file '%s': %s", *config, err.Error())
 	}
 
 	controller := new(nfork.Controller)
 	if err := json.Unmarshal(body, &controller.Inbounds); err != nil {
-		log.Fatalf("unable to parse config '%s': %s", *config, err.Error())
+		klog.KFatalf("main.error", "unable to parse config '%s': %s", *config, err.Error())
 	}
 
 	klog.KPrintf("init.info", "starting nfork control on %s\n", *listen)
