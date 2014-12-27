@@ -9,6 +9,7 @@
         },
         "active": "prod",
         "timeout": "100ms",
+        "timeoutCode": 404,
         "idleConn": 64
     },
 
@@ -20,5 +21,6 @@
             "logging": "localhost:8091"
         },
         "active": "prod",
+        "timeout": "1s"
     }
 ]
