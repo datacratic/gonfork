@@ -26,6 +26,10 @@ var (
 	carbon = flag.String(
 		"carbon", "",
 		"carbon host where metrics should be directed to")
+
+	mprefix = flag.String(
+		"mprefix", "",
+		"prefix to add to every meter key.")
 )
 
 func main() {
@@ -37,6 +41,10 @@ func main() {
 				klog.Fork(
 					klog.NewRingREST("", 1000),
 					klog.GetPrinter()))))
+
+	if *mprefix != "" {
+		meter.SetKeyPrefix(*mprefix)
+	}
 
 	meter.Handle(meter.NewRESTHandler(""))
 	if *carbon != "" {

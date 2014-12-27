@@ -143,6 +143,8 @@ func (inbound *Inbound) init() {
 
 	inbound.stats = new(InboundStats)
 	inbound.stats.init(inbound.Name)
+
+	inbound.stats.Outbounds.RecordInt(len(inbound.Outbound))
 }
 
 // Close cleans up any resources associated with this inbound.
